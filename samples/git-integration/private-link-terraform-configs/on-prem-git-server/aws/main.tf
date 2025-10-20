@@ -8,31 +8,47 @@ terraform {
 }
 
 provider "aws" {
-  # Replace with with your credentials file: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
-  shared_credentials_files = ["#credentials-file"]
   profile                  = "default"
   region                   = var.b_region
-}
-
-variable "a_vpc_id" {
-  type        = string
-  description = "VPC ID (example value: vpc-0b034fa19c3b5ac93)"
 }
 
 variable "b_region" {
   type        = string
   description = "Snowflake region (example value: us-west-2)"
+  default = "us-east-1"
 }
 
 variable "c_availability_zone" {
   type        = string
   description = "Availability zone within the region (example value: us-west-2b)"
+  default = "us-east-1a"
+}
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.19.0"
+
+  name = "snowflake-vpc"
+  cidr = "10.0.0.0/16"
+
+  azs             = [var.c_availability_zone]
+  private_subnets = ["10.0.1.0/24"]
+  public_subnets  = []
+
+  enable_dns_hostnames = true
+  enable_nat_gateway   = false
+  enable_vpn_gateway   = false
+
+  tags = {
+    Terraform = "true"
+    Environment = "dev"
+  }
 }
 
 data "aws_subnet" "vpc_subnet" {
   filter {
     name   = "vpc-id"
-    values = [var.a_vpc_id]
+    values = [module.vpc.vpc_id]
   }
   filter {
     name = "availabilityZone"
@@ -74,7 +90,7 @@ resource "aws_lb_target_group" "snowflake_pl_tg" {
   name     = "snowflake-privatelink-tg"
   port     = 443
   protocol = "TCP"
-  vpc_id   = var.a_vpc_id
+  vpc_id   = module.vpc.vpc_id
 }
 
 resource "aws_lb_target_group_attachment" "snowflake_pl_tg_ec2" {
@@ -86,6 +102,7 @@ resource "aws_lb_target_group_attachment" "snowflake_pl_tg_ec2" {
 resource "aws_security_group" "snowflake_pl_sg" {
   name        = "snowflake_pl_https_443_sg"
   description = "Allow HTTPS traffic from anywhere"
+  vpc_id = module.vpc.vpc_id
 
   ingress {
     description = "TCP"
@@ -135,6 +152,7 @@ data "aws_ami" "amazon_linux" {
 resource "aws_security_group" "snowflake_pl_ssh_sg" {
   name        = "snowflake_pl_ssh_sg"
   description = "Allow SSH traffic from anywhere"
+  vpc_id = module.vpc.vpc_id
 
   ingress {
     description = "SSH"
