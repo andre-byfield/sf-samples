@@ -39,26 +39,17 @@ module "vpc" {
 
   azs             = [var.c_availability_zone]
   private_subnets = ["10.0.1.0/24"]
-  public_subnets  = []
+  public_subnets  = ["10.0.101.0/24"]
 
   enable_dns_hostnames = true
-  enable_nat_gateway   = false
+  enable_nat_gateway   = true
   enable_vpn_gateway   = false
 
+  reuse_nat_ips = false
+  
   tags = {
     Terraform = "true"
     Environment = "dev"
-  }
-}
-
-data "aws_subnet" "vpc_subnet" {
-  filter {
-    name   = "vpc-id"
-    values = [module.vpc.vpc_id]
-  }
-  filter {
-    name = "availabilityZone"
-    values = [var.c_availability_zone]
   }
 }
 
@@ -78,7 +69,7 @@ resource "aws_lb" "snowflake_pl_lb" {
   load_balancer_type = "network"
   enable_cross_zone_load_balancing = true
   security_groups    = [aws_security_group.snowflake_pl_sg.id]
-  subnets            = [data.aws_subnet.vpc_subnet.id]
+  subnets            = module.vpc.private_subnets
 }
 
 resource "aws_lb_listener" "snowflake_pl_lbl" {
@@ -130,7 +121,7 @@ resource "aws_security_group" "snowflake_pl_sg" {
 resource "aws_instance" "snowflake_pl_git_server" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t2.micro"
-  subnet_id     = data.aws_subnet.vpc_subnet.id
+  subnet_id     = module.vpc.private_subnets[0]  # use first private subnet
   key_name      = null # This ensures the instance is created without a key pair
 
   vpc_security_group_ids = [aws_security_group.snowflake_pl_ssh_sg.id, aws_security_group.snowflake_pl_sg.id]
