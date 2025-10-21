@@ -24,6 +24,12 @@ variable "c_availability_zone" {
   default = "us-east-1a"
 }
 
+variable "d_arn" {
+  type        = string
+  description = "ARN to be added as an allowed principal for the VPC endpoint service"
+  default = "arn:aws:iam::107279681708:root"
+}
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.19.0"
@@ -58,7 +64,7 @@ data "aws_subnet" "vpc_subnet" {
 
 resource "aws_vpc_endpoint_service" "snowflake_pl_es" {
   acceptance_required        = true
-  allowed_principals         = ["*"]
+  allowed_principals         = [var.d_arn]
   network_load_balancer_arns = [aws_lb.snowflake_pl_lb.arn]
 
   tags = {
