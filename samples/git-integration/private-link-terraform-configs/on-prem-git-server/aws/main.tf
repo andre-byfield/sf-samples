@@ -53,6 +53,106 @@ module "vpc" {
   }
 }
 
+# SSM VPC Endpoint
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.b_region}.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  
+  private_dns_enabled = true
+  
+  tags = {
+    Name = "ssm-endpoint"
+  }
+}
+
+# SSM Messages VPC Endpoint
+resource "aws_vpc_endpoint" "ssm_messages" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.b_region}.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  
+  private_dns_enabled = true
+  
+  tags = {
+    Name = "ssm-messages-endpoint"
+  }
+}
+
+# EC2 Messages VPC Endpoint
+resource "aws_vpc_endpoint" "ec2_messages" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.b_region}.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  
+  private_dns_enabled = true
+  
+  tags = {
+    Name = "ec2-messages-endpoint"
+  }
+}
+
+# Security group for VPC endpoints
+resource "aws_security_group" "vpc_endpoint_sg" {
+  name        = "vpc-endpoint-sg"
+  description = "Security group for VPC endpoints"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "vpc-endpoint-sg"
+  }
+}
+
+# IAM role for EC2 to use Systems Manager
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "EC2-SSM-Role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Attach the AWS managed policy for SSM
+resource "aws_iam_role_policy_attachment" "ec2_ssm_policy" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Create instance profile
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "ec2-ssm-profile"
+  role = aws_iam_role.ec2_ssm_role.name
+}
+
 resource "aws_vpc_endpoint_service" "snowflake_pl_es" {
   acceptance_required        = true
   allowed_principals         = [var.d_arn]
@@ -165,4 +265,16 @@ resource "aws_security_group" "snowflake_pl_ssh_sg" {
     protocol  = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# Output the VPC Endpoint Service name for Snowflake configuration
+output "vpc_endpoint_service_name" {
+  description = "VPC Endpoint Service name to use in Snowflake"
+  value       = aws_vpc_endpoint_service.snowflake_pl_es.service_name
+}
+
+# Output the instance ID
+output "instance_id" {
+  description = "EC2 Instance ID"
+  value       = aws_instance.snowflake_pl_git_server.id
 }
